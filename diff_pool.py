@@ -23,16 +23,10 @@ class DiffPool(nn.Module):
         for in_nodes, out_nodes in zip(pool_layers[:-1], pool_layers[1:]):
             self.layers.append(torch.nn.Parameter(torch.rand(1, in_nodes, out_nodes)))
 
-    def forward(self, x):
-        # go one direction
-        for s in self.layers:
-            print("x in", x.shape)
-            print("s", s.shape)
-            x = torch.matmul(torch.softmax(s, dim=-1).transpose(1, 2), x)
-            print("x out", x.shape)
-        return x
+        self.output_embedding = nn.Linear(input_size, output_size)
 
-    def reverse(self, x):
+    def forward(self, x):
+        # TODO - need a measure of diversity for the clusters as per diffpool
         layer_reverse = []
         for idx, s in enumerate(self.layers):
             # print("x in", x.shape)
@@ -45,8 +39,10 @@ class DiffPool(nn.Module):
             print("idx", idx)
             for s_prev in self.layers[: idx + 1][::-1]:
                 x_prev = torch.matmul(torch.softmax(s_prev, dim=1), x_prev)
-                print(x_prev.shape)
-            layer_reverse.append(x_prev)
+                print("\tx_prev", x_prev.shape)
+            x_assign = self.output_embedding(x_prev)
+            print("\t - x_assign", x_assign.shape)
+            layer_reverse.append(x_assign)
         return layer_reverse
 
 
@@ -55,7 +51,7 @@ pool_layers = [4, 2, 1]
 
 x_input = torch.randn((1, start_clust, in_size))
 diffpool = DiffPool(in_size, out_size, start_clust, pool_layers)
-x_prev = diffpool.reverse(x_input)
+x_prev = diffpool(x_input)
 
 
 def dense_diff_pool(x, adj, s, mask=None):
