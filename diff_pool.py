@@ -1,7 +1,63 @@
 import torch
+from torch import nn
 from torch.nn import functional as F
 
 EPS = 1e-15
+
+
+class DiffPool(nn.Module):
+    """
+    A fully connected diff pool with soft assignment (up and down)
+    """
+
+    def __init__(self, input_size, output_size, init_nodes, pool_layers=[2, 1]):
+        super().__init__()
+        # discrim_size was 32 or 64
+        self.input_size = input_size
+        self.output_size = output_size
+        self.init_nodes = init_nodes
+        self.pool_layers = pool_layers
+
+        pool_layers = [init_nodes] + pool_layers
+        self.layers = []
+        for in_nodes, out_nodes in zip(pool_layers[:-1], pool_layers[1:]):
+            self.layers.append(torch.nn.Parameter(torch.rand(1, in_nodes, out_nodes)))
+
+    def forward(self, x):
+        # go one direction
+        for s in self.layers:
+            print("x in", x.shape)
+            print("s", s.shape)
+            x = torch.matmul(torch.softmax(s, dim=-1).transpose(1, 2), x)
+            print("x out", x.shape)
+        return x
+
+    def reverse(self, x):
+        layer_reverse = []
+        for idx, s in enumerate(self.layers):
+            # print("x in", x.shape)
+            # print("s", s.shape)
+            x = torch.matmul(torch.softmax(s, dim=-1).transpose(1, 2), x)
+            # print("x out", x.shape)
+
+            # go back up
+            x_prev = x.detach().clone()
+            print("idx", idx)
+            for s_prev in self.layers[: idx + 1][::-1]:
+                x_prev = torch.matmul(torch.softmax(s_prev, dim=1), x_prev)
+                print(x_prev.shape)
+            layer_reverse.append(x_prev)
+        return layer_reverse
+
+
+in_size, out_size, start_clust = 5, 4, 8
+pool_layers = [4, 2, 1]
+
+x_input = torch.randn((1, start_clust, in_size))
+diffpool = DiffPool(in_size, out_size, start_clust, pool_layers)
+diffpool(x_input)
+
+x_prev = diffpool.reverse(x_input)
 
 
 def dense_diff_pool(x, adj, s, mask=None):
