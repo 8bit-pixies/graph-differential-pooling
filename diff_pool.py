@@ -55,8 +55,6 @@ pool_layers = [4, 2, 1]
 
 x_input = torch.randn((1, start_clust, in_size))
 diffpool = DiffPool(in_size, out_size, start_clust, pool_layers)
-diffpool(x_input)
-
 x_prev = diffpool.reverse(x_input)
 
 
