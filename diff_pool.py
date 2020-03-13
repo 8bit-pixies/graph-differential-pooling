@@ -22,6 +22,7 @@ class DiffPool(nn.Module):
         self.pool_layers = pool_layers
 
         pool_layers = [init_nodes] + pool_layers
+        self.gate_size = len(pool_layers) + 1
         self.layers = []
         for in_nodes, out_nodes in zip(pool_layers[:-1], pool_layers[1:]):
             # this is the same as nn.Linear(in_nodes, out_nodes), but we can do transpose
@@ -29,11 +30,19 @@ class DiffPool(nn.Module):
             # Z = GNN(A, X) as per diffpool paper
             self.layers.append(torch.nn.Parameter(torch.rand(1, in_nodes, out_nodes)))
 
+        self.gate_layers_pool = []
+        self.gate_layers_pred = []
+        for _ in range(self.gate_size):
+            self.gate_layers_pool.append(nn.Linear(init_nodes, 1))
+            self.gate_layers_pred.append(nn.Linear(input_size, 1))
+
         self.output_embedding = nn.Linear(input_size, output_size)
 
     def forward(self, x):
-        # TODO - need a measure of diversity for the clusters as per diffpool
+        # need a measure of diversity for the clusters as per diffpool
+        # this is done through regularisation
         layer_reverse = []
+        layer_gate_embed = []
         for idx, s in enumerate(self.layers):
             # print("x in", x.shape)
             # print("s", s.shape)
@@ -49,7 +58,22 @@ class DiffPool(nn.Module):
             x_assign = self.output_embedding(x_prev)
             print("\t - x_assign", x_assign.shape)
             layer_reverse.append(x_assign)
-        return layer_reverse
+
+            gate_pred = self.gate_layers_pool[idx](x_prev.permute(0, 2, 1))
+            print("\t - gate_pred", gate_pred.shape)
+            gate_pred = self.gate_layers_pred[idx](gate_pred.squeeze(2))
+            layer_gate_embed.append(gate_pred)
+
+        # based on this we need to add a selection gate - which also
+        # has entropy regularisation or gumbel softmax trick
+        gate_pred = torch.softmax(torch.cat(layer_gate_embed, 1), 1).unsqueeze(1).unsqueeze(1)
+        layer_reverse = torch.stack(layer_reverse, -1)
+        
+        print("gate_pred", gate_pred.shape)
+        print("layer_reverse", layer_reverse.shape)
+
+        output = layer_reverse * gate_pred
+        return output
 
     @staticmethod
     def entropy_(x, dim=1):
@@ -57,7 +81,7 @@ class DiffPool(nn.Module):
         b = -1.0 * b.sum()
         return b
 
-    def entropy(self):
+    def entropy_loss(self):
         """
         This needs to be part of the loss function definition
         it is here just for ease of reading...
