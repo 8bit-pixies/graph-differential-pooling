@@ -49,7 +49,7 @@ class DiffPool(nn.Module):
             x = torch.matmul(torch.softmax(s, dim=-1).transpose(1, 2), x)
             # print("x out", x.shape)
 
-            # go back up
+            # go back up - to reassign back up the chain
             x_prev = x.detach().clone()
             print("idx", idx)
             for s_prev in self.layers[: idx + 1][::-1]:
@@ -66,9 +66,11 @@ class DiffPool(nn.Module):
 
         # based on this we need to add a selection gate - which also
         # has entropy regularisation or gumbel softmax trick
-        gate_pred = torch.softmax(torch.cat(layer_gate_embed, 1), 1).unsqueeze(1).unsqueeze(1)
+        gate_pred = (
+            torch.softmax(torch.cat(layer_gate_embed, 1), 1).unsqueeze(1).unsqueeze(1)
+        )
         layer_reverse = torch.stack(layer_reverse, -1)
-        
+
         print("gate_pred", gate_pred.shape)
         print("layer_reverse", layer_reverse.shape)
 
