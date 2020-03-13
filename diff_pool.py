@@ -8,6 +8,9 @@ EPS = 1e-15
 class DiffPool(nn.Module):
     """
     A fully connected diff pool with soft assignment (up and down)
+
+    To encourage diversity, we regularise using the entropy of
+    softmax(Z) of both dimensions (1, and 2). 
     """
 
     def __init__(self, input_size, output_size, init_nodes, pool_layers=[2, 1]):
@@ -21,6 +24,9 @@ class DiffPool(nn.Module):
         pool_layers = [init_nodes] + pool_layers
         self.layers = []
         for in_nodes, out_nodes in zip(pool_layers[:-1], pool_layers[1:]):
+            # this is the same as nn.Linear(in_nodes, out_nodes), but we can do transpose
+            # for doing unpooling if needed to determine cluster assignment
+            # Z = GNN(A, X) as per diffpool paper
             self.layers.append(torch.nn.Parameter(torch.rand(1, in_nodes, out_nodes)))
 
         self.output_embedding = nn.Linear(input_size, output_size)
@@ -44,6 +50,23 @@ class DiffPool(nn.Module):
             print("\t - x_assign", x_assign.shape)
             layer_reverse.append(x_assign)
         return layer_reverse
+
+    @staticmethod
+    def entropy_(x, dim=1):
+        b = F.softmax(x, dim=dim) * F.log_softmax(x, dim=dim)
+        b = -1.0 * b.sum()
+        return b
+
+    def entropy(self):
+        """
+        This needs to be part of the loss function definition
+        it is here just for ease of reading...
+        """
+        b = 0
+        for l in self.layers:
+            b += self.entropy_(l, 1)
+            b += self.entropy_(l, -1)
+        return b
 
 
 in_size, out_size, start_clust = 5, 4, 8
